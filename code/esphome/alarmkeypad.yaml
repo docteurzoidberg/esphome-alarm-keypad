@@ -1,0 +1,332 @@
+substitutions:
+  devicename: "alarmkeypad"
+  friendly_name: "Alarm Keypad"
+
+esphome:
+  name: $devicename
+  build_path: build/$devicename
+  platform: ESP32
+  board: esp32doit-devkit-v1
+  on_boot:
+    - priority: 1000
+      then:
+        - lambda: |-
+            fastled_base_fastledlightoutput->get_controller()->setDither(0);
+            id(mainobj).set_display(id(alpha));
+            id(mainobj).set_alarmstatusentity(id(alarmtext));
+            id(mainobj).set_keypadtext(id(reader));
+    - priority: 600
+      then:
+        - lambda: |-
+            id(mainobj).on_boot();
+            id(alpha).set_brightness(.1);
+        - light.turn_on:
+            id: leds_keypad
+            brightness: 0.2
+            effect: keypad_boot_effect
+        - light.turn_on:
+            id: leds_case
+            brightness: 0.2
+            effect: case_boot_effect
+  on_shutdown:
+    then:
+      - lambda: |-
+          id(mainobj).on_shutdown();
+
+wifi: !include "common/wifi.yaml"
+
+captive_portal:
+
+logger:
+  level: ERROR
+
+ota:
+
+api:
+  services:
+
+    - service: rfidreader_tag_ok
+      then:
+      - rtttl.play: "beep:d=16,o=5,b=100:b"
+
+    - service: rfidreader_tag_ko
+      then:
+      - rtttl.play: "beep:d=8,o=5,b=100:b"
+
+    - service: play_rtttl
+      variables:
+        song_str: string
+      then:
+        - rtttl.play:
+            rtttl: !lambda 'return song_str;'
+
+output:
+  - platform: ledc
+    pin: GPIO25
+    id: rtttl_out
+
+i2c:
+  sda: 21
+  scl: 22
+
+rtttl:
+  output: rtttl_out
+  id: buzzer
+  on_finished_playback:
+    - logger.log: 'Song ended!'
+
+pn532_i2c:
+  id: rfid
+  update_interval: 1s
+  on_tag:
+    then:
+    - homeassistant.tag_scanned: !lambda 'return x;'
+    - rtttl.play: "success:d=24,o=5,b=100:c,g,b"
+
+pcf8574:
+  - id: 'pcf8574_hub'
+    address: 0x38
+    pcf8575: False
+
+keypad:
+  id: mykeypad
+  rows:
+    - pin:
+        pcf8574: pcf8574_hub
+        number: 0
+        mode: INPUT
+        inverted: False
+    - pin:
+        pcf8574: pcf8574_hub
+        number: 1
+        mode: INPUT
+        inverted: False
+    - pin:
+        pcf8574: pcf8574_hub
+        number: 2
+        mode: INPUT
+        inverted: False
+    - pin:
+        pcf8574: pcf8574_hub
+        number: 3
+        mode: INPUT
+        inverted: False
+  columns:
+    - pin:
+        pcf8574: pcf8574_hub
+        number: 4
+        mode: INPUT
+        inverted: False
+    - pin:
+        pcf8574: pcf8574_hub
+        number: 5
+        mode: INPUT
+        inverted: False
+    - pin:
+        pcf8574: pcf8574_hub
+        number: 6
+        mode: INPUT
+        inverted: False
+    - pin:
+        pcf8574: pcf8574_hub
+        number: 7
+        mode: INPUT
+        inverted: False
+  keys: "789D456B123A0DDD"
+
+display:
+  - platform: ht16k33_alpha
+    id: "alpha"
+    address: 0x70
+    secondary_displays:
+      - address: 0x71
+    update_interval : 33ms
+    lambda: |-
+      id(mainobj).display_lambdacall(it, id(text).state);
+
+light:
+
+  #Keypad adressable rgb backlight leds
+  - platform: fastled_clockless
+    id: leds_keypad
+    chipset: WS2812B
+    pin: 13
+    num_leds: 13
+    rgb_order: GRB
+    name: "$friendly_name key backlight leds"
+    gamma_correct: 0
+    color_correct: [30%, 30%, 30%]
+    effects:
+      - addressable_rainbow:
+          name: Rainbow
+      - addressable_scan:
+          name: keypad_boot_effect
+          move_interval: 22ms
+          scan_width: 3
+      - addressable_lambda:
+          name: "render"
+          update_interval: 16ms
+          lambda: |-
+            id(mainobj).leds_keypad_lambdacall(it);
+
+  #Case inside glow adressable rgb leds
+  - platform: fastled_clockless
+    id: leds_case
+    chipset: WS2812B
+    pin: 19
+    num_leds: 22
+    rgb_order: GRB
+    name: "$friendly_name case glow leds"
+    gamma_correct: 0
+    color_correct: [30%, 30%, 30%]
+    effects:
+      - addressable_rainbow:
+          name: Rainbow
+      - addressable_scan:
+          name: case_boot_effect
+          move_interval: 22ms
+          scan_width: 4
+      - addressable_lambda:
+          name: "render"
+          update_interval: 22ms
+          lambda: |-
+            id(mainobj).leds_case_lambdacall(it);
+
+  #Rfid status addressable rgb led ring
+  - platform: fastled_clockless
+    id: leds_rfid
+    chipset: WS2812B
+    pin: 18
+    num_leds: 8
+    rgb_order: GRB
+    name: "$friendly_name Rfid ring leds"
+    gamma_correct: 0
+    color_correct: [50%, 50%, 50%]
+    effects:
+      - addressable_rainbow:
+          name: Rainbow
+      - addressable_lambda:
+          name: "render"
+          update_interval: 22ms
+          lambda: |-
+            id(mainobj).leds_rfid_lambdacall(it);
+
+text_sensor:
+
+    #Input text from keypad
+  - platform: keypad
+    id: reader
+    keypad_id: mykeypad
+    max_length: 4
+    end_keys: "AB"
+    back_keys: "D"
+    allowed_keys: "0123456789"
+    on_progress:
+      then:
+        - lambda: !lambda |-
+            id(mainobj).on_keypad_progress(x);
+    on_value:
+      then:
+        - lambda: !lambda |-
+            id(mainobj).on_keypad_value(x);
+        - homeassistant.service:
+            service: !lambda |-
+              if(id(alarmtext).state=="disarmed") {
+                return id(mainobj).get_arm_key()=='B' ? "alarm_control_panel.alarm_arm_home" : "alarm_control_panel.alarm_arm_away";
+              }
+              else {
+                return "alarm_control_panel.alarm_disarm";
+              }
+
+            data_template:
+              code: !lambda 'return id(reader).state.c_str();'
+              entity_id: "alarm_control_panel.alarme"
+
+
+    #Text set from/to home assistant
+  - platform: homeassistant
+    name: "$friendly_name text"
+    entity_id: input_text.alarm_keypad_text
+    id: text
+
+    #Home assistant alarm status
+  - platform: homeassistant
+    name: "$friendly_name alarm state"
+    entity_id: alarm_control_panel.alarme
+    id: alarmtext
+    on_value:
+      then:
+      - lambda: !lambda |-
+          if(x=="armed_home") {
+            id(text).publish_state("A-HOME");
+          }
+          else if(x=="armed_night") {
+            id(text).publish_state("A-NIGHT");
+          }
+          else if(x=="armed_away") {
+            id(text).publish_state("ARMED");
+          }
+          else if(x=="arming") {
+            id(text).publish_state("ARMING");
+          }
+          else if(x=="disarmed") {
+            id(text).publish_state("DISARMED");
+          }
+          else {
+            id(text).publish_state(x);
+          }
+
+binary_sensor:
+  - <<: !include "common/common_binary_sensors.yaml"
+
+  - platform: keypad
+    keypad_id: mykeypad
+    id: keyB
+    key: B
+    on_press:
+      then:
+        - lambda: !lambda |-
+            id(mainobj).set_arm_key('B');
+  - platform: keypad
+    keypad_id: mykeypad
+    id: keyA
+    key: A
+    on_press:
+      then:
+        - lambda: !lambda |-
+            id(mainobj).set_arm_key('A');
+
+switch:
+  - <<: !include "common/common_switchs.yaml"
+
+sensor:
+  - <<: !include "common/common_sensors.yaml"
+
+    #Brightness set from home assistant
+  - platform: homeassistant
+    name: "$friendly_name brightness"
+    entity_id: input_number.alarm_keypad_brightness
+    id: brightness
+    on_value:
+      then:
+        lambda: !lambda |-
+          id(alpha).set_brightness(x);
+
+alarm_keypad_component:
+  id: mainobj
+
+  #on_boot:
+  #on_ota:
+  #on_shutdown:
+  #on_alarm_armed:
+  #on_alarm_disarmed:
+  on_ready:
+    then:
+      - light.turn_on:
+          id: leds_keypad
+          brightness: 0.2
+          effect: render
+      - light.turn_on:
+          id: leds_case
+          brightness: 0.2
+          effect: render
