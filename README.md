@@ -1,6 +1,8 @@
 
 # Esphome Alarm Keypad
 
+! README IN PROGRESS !
+
 ![Alarm Keypad Picture](pictures/2021-01-27_23-36-26.png)
 
 The Alarm Keypad is an interface to the Home Assistant Alarm Control Panel
