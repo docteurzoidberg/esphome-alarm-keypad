@@ -11,6 +11,10 @@ The Alarm Keypad is an interface to the Home Assistant Alarm Control Panel
 
 Goal is to have a nice alarm control panel with lights, displays, rfid tag reader and a backup keypad to arm/disarm the Home Assistant alarm.
 
+## Prototype video
+
+[![protovideodemo](http://img.youtube.com/vi/kQHlJRchfG0/0.jpg)](http://www.youtube.com/watch?v=kQHlJRchfG0 "prototype working with all features !")
+
 ## Features
 
 - 13 key keyboard with mechanical switches . behind a pcf8574 i2c i/o expander
